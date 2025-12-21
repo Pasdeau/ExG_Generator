@@ -36,9 +36,20 @@ env/
 output_eng/
 out/
 logs/
+
+# Model checkpoints and outputs
+checkpoints/
+*/checkpoints/
+*.pth
+inference_sample_*.png
+
+# Data files (generated or downloaded)
 *.csv
 *.png
 *.json
 *.npy
-!example_output/
+physionet.org/
+
+# System files
 .DS_Store
+

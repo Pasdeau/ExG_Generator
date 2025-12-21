@@ -123,18 +123,65 @@ def filtfilt_iir(b: np.ndarray, a: np.ndarray, x: np.ndarray) -> np.ndarray:
     return y
 
 
-def pink_noise_1_over_f(n: int, fs: int, rng: np.random.Generator, std_uV: float) -> np.ndarray:
-    """Approximate 1/f noise using frequency shaping."""
+def colored_noise(n: int, fs: int, rng: np.random.Generator, beta: float = 1.0, std_uV: float = 1.0) -> np.ndarray:
+    """
+    Generate (1/f)^beta colored noise using NeuroKit-style frequency shaping.
+    
+    Based on: Timmer, J., & Koenig, M. (1995). On generating power law noise.
+    
+    Parameters
+    ----------
+    n : int
+        Number of samples to generate.
+    fs : int
+        Sampling rate in Hz.
+    rng : np.random.Generator
+        Random number generator.
+    beta : float
+        Noise exponent. Common values:
+        - beta = -2 : violet noise (high frequency emphasis)
+        - beta = -1 : blue noise
+        - beta = 0  : white noise (flat spectrum)
+        - beta = 1  : pink/flicker noise (1/f)
+        - beta = 2  : brown/red noise (1/f^2, random walk)
+    std_uV : float
+        Desired standard deviation in microvolts.
+        
+    Returns
+    -------
+    np.ndarray
+        Colored noise signal with specified characteristics.
+    """
     if std_uV <= 0:
         return np.zeros(n, dtype=np.float64)
-    w = rng.normal(0.0, 1.0, size=n)
-    W = np.fft.rfft(w)
-    f = np.fft.rfftfreq(n, d=1.0 / fs)
-    shape = np.ones_like(f)
-    shape[1:] = 1.0 / np.sqrt(f[1:])
-    y = np.fft.irfft(W * shape, n=n)
+    
+    # Generate white noise in frequency domain
+    freqs = np.fft.rfftfreq(n, d=1.0 / fs)
+    
+    # Random phases
+    phases = rng.uniform(0, 2 * np.pi, len(freqs))
+    
+    # Amplitude scaling: S(f) proportional to (1/f)^beta
+    # For power spectrum: amplitude ~ (1/f)^(beta/2)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        amplitudes = np.where(freqs > 0, freqs ** (-beta / 2.0), 0.0)
+    amplitudes[0] = 0  # DC component = 0
+    
+    # Construct complex spectrum
+    spectrum = amplitudes * np.exp(1j * phases)
+    
+    # Inverse FFT to get time domain signal
+    y = np.fft.irfft(spectrum, n=n)
+    
+    # Normalize to desired standard deviation
     y = y / (np.std(y) + 1e-12)
     return (std_uV * y).astype(np.float64)
+
+
+# Backward-compatible alias
+def pink_noise_1_over_f(n: int, fs: int, rng: np.random.Generator, std_uV: float) -> np.ndarray:
+    """Backward-compatible wrapper for colored_noise with beta=1 (pink noise)."""
+    return colored_noise(n, fs, rng, beta=1.0, std_uV=std_uV)
 
 
 def band_limited_noise(n: int, fs: int, rng: np.random.Generator, f_lo: float, f_hi: float, std_uV: float) -> np.ndarray:
@@ -145,6 +192,119 @@ def band_limited_noise(n: int, fs: int, rng: np.random.Generator, f_lo: float, f
     x = bandpass_fft(x, fs, f_lo, f_hi)
     x = x / (np.std(x) + 1e-12)
     return (std_uV * x).astype(np.float64)
+
+
+def signal_distort(
+    signal: np.ndarray,
+    fs: int,
+    rng: np.random.Generator,
+    noise_amplitude: float = 0.0,
+    noise_beta: float = 0.0,
+    powerline_amplitude: float = 0.0,
+    powerline_frequency: float = 50.0,
+    powerline_harmonics: int = 2,
+    artifacts_amplitude: float = 0.0,
+    artifacts_number: int = 3,
+    artifacts_duration_range: Tuple[float, float] = (0.01, 0.1),
+    linear_drift: float = 0.0,
+) -> np.ndarray:
+    """
+    Add noise and artifacts to a signal (NeuroKit-inspired approach).
+    
+    This function is inspired by neurokit2.signal_distort() and provides
+    a unified way to add various types of contamination to physiological signals.
+    
+    Parameters
+    ----------
+    signal : np.ndarray
+        The input signal to distort.
+    fs : int
+        Sampling rate in Hz.
+    rng : np.random.Generator
+        Random number generator.
+    noise_amplitude : float
+        Amplitude of colored noise (relative to signal std).
+    noise_beta : float
+        Noise color exponent (0=white, 1=pink, 2=brown).
+    powerline_amplitude : float
+        Amplitude of powerline interference (relative to signal std).
+    powerline_frequency : float
+        Powerline frequency (50 or 60 Hz typically).
+    powerline_harmonics : int
+        Number of harmonics to add (1=fundamental only, 2=+100Hz, etc.).
+    artifacts_amplitude : float
+        Amplitude of random burst artifacts (relative to signal std).
+    artifacts_number : int
+        Number of artifact bursts to add.
+    artifacts_duration_range : Tuple[float, float]
+        Min and max duration of each artifact burst in seconds.
+    linear_drift : float
+        Amount of linear drift to add (relative to signal std).
+        
+    Returns
+    -------
+    np.ndarray
+        The distorted signal.
+        
+    Examples
+    --------
+    >>> distorted = signal_distort(clean_signal, fs=8000, rng=rng,
+    ...                            powerline_amplitude=0.05,
+    ...                            artifacts_amplitude=0.2,
+    ...                            artifacts_number=3)
+    """
+    n = len(signal)
+    sig_std = np.std(signal) + 1e-12
+    output = signal.copy()
+    t = np.arange(n) / fs
+    
+    # 1. Add colored noise
+    if noise_amplitude > 0:
+        noise = colored_noise(n, fs, rng, beta=noise_beta, std_uV=1.0)
+        output += noise_amplitude * sig_std * noise
+    
+    # 2. Add powerline interference (50/60 Hz + harmonics)
+    if powerline_amplitude > 0:
+        for h in range(1, powerline_harmonics + 1):
+            freq = powerline_frequency * h
+            if freq < fs / 2:  # Nyquist check
+                phase = rng.uniform(0, 2 * np.pi)
+                harmonic_amp = powerline_amplitude / h  # Harmonics decay
+                output += harmonic_amp * sig_std * np.sin(2 * np.pi * freq * t + phase)
+    
+    # 3. Add random artifact bursts
+    if artifacts_amplitude > 0 and artifacts_number > 0:
+        duration_s = n / fs
+        for _ in range(artifacts_number):
+            # Random burst duration and position
+            burst_dur = rng.uniform(*artifacts_duration_range)
+            burst_samples = int(burst_dur * fs)
+            if burst_samples < 2:
+                continue
+            
+            # Random start position
+            max_start = n - burst_samples
+            if max_start <= 0:
+                continue
+            start_idx = rng.integers(0, max_start)
+            end_idx = start_idx + burst_samples
+            
+            # Generate burst: band-limited noise with smooth envelope
+            burst = rng.standard_normal(burst_samples)
+            # Apply raised-cosine envelope for smooth onset/offset
+            envelope = 0.5 - 0.5 * np.cos(2 * np.pi * np.linspace(0, 1, burst_samples))
+            burst = burst * envelope
+            # Normalize and scale
+            burst = burst / (np.std(burst) + 1e-12)
+            output[start_idx:end_idx] += artifacts_amplitude * sig_std * burst
+    
+    # 4. Add linear drift
+    if linear_drift > 0:
+        drift = np.linspace(0, linear_drift * sig_std, n)
+        output += drift
+    
+    return output
+
 
 
 def smooth_envelope_gate(t: np.ndarray, rng: np.random.Generator, n_bursts: int, dur_s: Tuple[float, float]) -> np.ndarray:
@@ -336,16 +496,34 @@ class ElectrodeModel:
 
 @dataclass
 class ContaminationModel:
-    # drift / mains / noise are in uV
+    """
+    Contamination/noise model parameters.
+    
+    Noise types follow NeuroKit2's colored noise approach:
+    - white noise (beta=0): Electronic/thermal noise
+    - pink noise (beta=1): 1/f flicker noise  
+    - brown noise (beta=2): Random walk, models slow baseline drift
+    """
+    # Baseline drift - now modeled as brown noise (beta=2)
     drift_amp_uV: float = 25.0
-    drift_hz: float = 0.15
+    drift_hz: float = 0.15  # For sinusoidal component
+    brown_std_uV: float = 8.0  # Brown noise for realistic baseline wander
 
+    # Powerline interference (NeuroKit-style)
     mains_hz: float = 50.0
     mains_amp_uV: float = 6.0
     mains_harmonics: int = 2  # add 100,150,...
 
-    white_std_uV: float = 4.5
-    pink_std_uV: float = 3.0
+    # Colored noise components (NeuroKit-style beta values)
+    white_std_uV: float = 4.5  # beta=0: flat spectrum (electronic noise)
+    pink_std_uV: float = 3.0   # beta=1: 1/f noise (flicker)
+    
+    # NeuroKit-style signal distortion parameters (relative to signal std)
+    distort_noise_amp: float = 0.05  # Relative noise amplitude
+    distort_noise_beta: float = 0.5  # Mixed white-pink noise
+    distort_artifact_amp: float = 0.15  # Relative artifact amplitude
+    distort_artifact_count: int = 4  # Number of random burst artifacts
+    distort_artifact_duration: Tuple[float, float] = (0.02, 0.15)  # Duration range
 
     # EMG-like bursts: band-limited noise with envelope
     emg_enabled: bool = True
@@ -449,34 +627,47 @@ def simulate(cfg: SimConfig) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict, 
     eng_neural = e1 - e2
 
     # ---- Add contaminations (some common-mode, some differential)
+    # NeuroKit-style colored noise generation
     drift = cfg.contam.drift_amp_uV * np.sin(2 * np.pi * cfg.contam.drift_hz * t + 0.3)
-
-    mains = cfg.contam.mains_amp_uV * np.sin(2 * np.pi * cfg.contam.mains_hz * t + 0.1)
+    
+    # Add brown noise for realistic baseline wander (NeuroKit beta=2)
+    brown = colored_noise(n, cfg.fs, rng, beta=2.0, std_uV=cfg.contam.brown_std_uV)
+    
+    # Powerline interference with harmonics (NeuroKit-style)
+    mains = cfg.contam.mains_amp_uV * np.sin(2 * np.pi * cfg.contam.mains_hz * t + rng.uniform(0, 2*np.pi))
     for h in range(2, 2 + max(0, cfg.contam.mains_harmonics)):
-        mains += (cfg.contam.mains_amp_uV / (h * 1.8)) * np.sin(2 * np.pi * (h * cfg.contam.mains_hz) * t + 0.1 * h)
+        phase = rng.uniform(0, 2 * np.pi)
+        mains += (cfg.contam.mains_amp_uV / (h * 1.5)) * np.sin(2 * np.pi * (h * cfg.contam.mains_hz) * t + phase)
 
-    white = rng.normal(0.0, cfg.contam.white_std_uV, size=n)
-    pink = pink_noise_1_over_f(n, cfg.fs, rng, cfg.contam.pink_std_uV)
+    # Colored noise: white (beta=0) and pink (beta=1)
+    white = colored_noise(n, cfg.fs, rng, beta=0.0, std_uV=cfg.contam.white_std_uV)
+    pink = colored_noise(n, cfg.fs, rng, beta=1.0, std_uV=cfg.contam.pink_std_uV)
 
-    # ---- Advanced Artifact Generation (Replaces old EMG/Motion logic if enabled)
-    # We will simply ADD this to the contamination.
-    # Logic: if cfg.contam.use_advanced_artifacts is True (we'll assume True for this task updates)
+    # ---- Advanced Artifact Generation (Markov Chain based)
     art_gen = ArtifactGenerator(cfg.fs, cfg.duration_s, cfg.seed + 1)
     artifact_sig, artifact_labels = art_gen.generate()
-
-    # NOTE: Old simple EMG/Motion is KEPT as "background" baseline noise if desired, 
-    # but the user asked to "apply the logic".
-    # We will reduce the old random motion/emg to avoid double-counting if we want pure control,
-    # OR we treat the new Generator as "Major Artifacts" and the old one as "Background".
-    # Let's treat the new one as the primary source of "Events".
     
     # common-mode components reduced by bipolar; model imperfect rejection:
     cm_reject = 0.25  # 0 means perfect cancel; 1 means no cancel
     
-    # Total Raw Signal
-    # We now separate components for visualization if needed
-    clean_baseline = eng_neural + white + pink # "Physiological + Electronic noise" (Clean-ish)
-    raw = clean_baseline + cm_reject * (drift + mains) + artifact_sig
+    # Total Raw Signal with NeuroKit-style noise composition
+    # Clean baseline = neural + white + pink + brown (slow wander)
+    clean_baseline = eng_neural + white + pink + brown
+    
+    # Apply NeuroKit-style signal distortion for additional realism
+    distorted_baseline = signal_distort(
+        clean_baseline, 
+        cfg.fs, 
+        rng,
+        noise_amplitude=cfg.contam.distort_noise_amp,
+        noise_beta=cfg.contam.distort_noise_beta,
+        artifacts_amplitude=cfg.contam.distort_artifact_amp,
+        artifacts_number=cfg.contam.distort_artifact_count,
+        artifacts_duration_range=cfg.contam.distort_artifact_duration,
+    )
+    
+    # Combine all components
+    raw = distorted_baseline + cm_reject * (drift + mains) + artifact_sig
 
     # ---- Processing (typical surface pipeline): bandpass + notch
     proc = raw.copy()
