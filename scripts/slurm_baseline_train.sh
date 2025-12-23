@@ -6,7 +6,7 @@
 #SBATCH --gres=gpu:a100_3g.40gb:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --time=02:00:00
+#SBATCH --time=06:00:00
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=wenzheng.wang@lip6.fr
 

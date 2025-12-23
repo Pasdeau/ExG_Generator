@@ -24,6 +24,7 @@ import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend for remote servers
 import matplotlib.pyplot as plt
 import seaborn as sns
+import sys
 
 try:
     import xgboost as xgb
@@ -31,6 +32,7 @@ try:
 except ImportError:
     HAS_XGBOOST = False
     print("[WARN] XGBoost not installed, skipping XGBoost classifier")
+    sys.stdout.flush()
 
 import sys
 sys.path.append(str(Path(__file__).parent))
@@ -49,6 +51,7 @@ def extract_features_from_loader(dataset):
         y: Labels (n_samples,)
     """
     print(f"Extracting features from {len(dataset)} windows...")
+    sys.stdout.flush()
     
     X_list = []
     y_list = []
@@ -85,11 +88,13 @@ def extract_features_from_loader(dataset):
         
         if (idx + 1) % 100 == 0:
             print(f"  Processed {idx + 1}/{len(dataset)} windows...")
+            sys.stdout.flush()
     
     X = np.array(X_list)
     y = np.array(y_list)
     
     print(f"Feature extraction complete: X.shape={X.shape}, y.shape={y.shape}")
+    sys.stdout.flush()
     return X, y
 
 
