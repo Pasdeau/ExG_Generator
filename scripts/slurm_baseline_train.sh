@@ -7,6 +7,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=02:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=wenzheng.wang@lip6.fr
 
 # EMG Baseline Training - Hudgins Features + Classical ML
 # Quick test with 5 subjects, both intra-day and cross-day
