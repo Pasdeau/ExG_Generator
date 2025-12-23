@@ -2,7 +2,7 @@
 #SBATCH --job-name=emg_baseline
 #SBATCH --output=emg_baseline_%j.out
 #SBATCH --error=emg_baseline_%j.err
-#SBATCH --partition=gpu
+#SBATCH --partition=convergence
 #SBATCH --gres=gpu:a100_3g.40gb:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
