@@ -62,9 +62,11 @@ class GRABMyoWindowDataset(Dataset):
         apply_car: bool = True,
         apply_bandpass: bool = True,
         apply_notch: bool = False,
+        apply_notch: bool = False,
         normalize: bool = True,
         transform = None,
-        session_stats: Optional[Dict] = None
+        session_stats: Optional[Dict] = None,
+        preload: bool = False
     ):
         self.data_root = Path(data_root)
         self.sessions = sessions
@@ -81,10 +83,15 @@ class GRABMyoWindowDataset(Dataset):
         self.normalize = normalize
         self.transform = transform
         self.session_stats = session_stats if session_stats else {}
+        self.preload = preload
+        self.trial_cache = {}
         
         # Build window index
         self.windows = []
         self._index_windows()
+        
+        if self.preload:
+            print(f"[GRABMyoWindowDataset] Preloading {len(self.trial_cache)} trials into RAM...")
     
     def _index_windows(self):
         """Build a list of (trial_path, window_idx, gesture_label, session) tuples."""
@@ -106,14 +113,25 @@ class GRABMyoWindowDataset(Dataset):
                         fpath = subj_dir / fname
                         
                         # Check if .dat exists
-                        if (subj_dir / (fname + ".dat")).exists():
+                        dat_path = subj_dir / (fname + ".dat")
+                        if dat_path.exists():
+                            # Cache data if preloading
+                            str_path = str(fpath)
+                            if self.preload and str_path not in self.trial_cache:
+                                try:
+                                    record = wfdb.rdrecord(str_path)
+                                    self.trial_cache[str_path] = record.p_signal.astype(np.float32)
+                                except Exception as e:
+                                    print(f"[WARN] Failed to read {str_path}: {e}")
+                                    continue
+
                             # Compute number of windows for this 5-sec trial
                             trial_len = int(5.0 * self.fs)  # 5 seconds @ 2048 Hz = 10240 samples
                             n_windows = (trial_len - self.window_len) // self.hop + 1
                             
                             for win_idx in range(n_windows):
                                 self.windows.append({
-                                    "path": str(fpath),
+                                    "path": str_path,
                                     "window_idx": win_idx,
                                     "session": session,
                                     "subject": subj,
@@ -129,9 +147,12 @@ class GRABMyoWindowDataset(Dataset):
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
         info = self.windows[idx]
         
-        # Read WFDB record (cached in memory would be better for performance)
-        record = wfdb.rdrecord(info["path"])
-        sig = record.p_signal  # Shape: (10240, 32)
+        # Read signal
+        if self.preload:
+            sig = self.trial_cache[info["path"]]
+        else:
+            record = wfdb.rdrecord(info["path"])
+            sig = record.p_signal  # Shape: (10240, 32)
         
         # Preprocessing pipeline
         if self.apply_car or self.apply_bandpass or self.apply_notch:

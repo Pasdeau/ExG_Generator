@@ -195,7 +195,8 @@ def main():
             hop_ms=50,
             apply_car=True,
             apply_bandpass=True,
-            normalize=True
+            normalize=True,
+            preload=True
         )
         
         # 5-Fold
@@ -229,7 +230,8 @@ def main():
                 hop_ms=50,
                 apply_car=True,
                 apply_bandpass=True,
-                normalize=True # Per-session normalization handled internally
+                normalize=True, # Per-session normalization handled internally
+                preload=True
             )
             
             test_dataset = GRABMyoWindowDataset(
@@ -241,7 +243,8 @@ def main():
                 hop_ms=50,
                 apply_car=True,
                 apply_bandpass=True,
-                normalize=True 
+                normalize=True,
+                preload=True
             )
             
             acc = train_model(args, train_dataset, test_dataset, fold_idx+1, device)
