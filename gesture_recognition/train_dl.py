@@ -86,8 +86,7 @@ def train_model(args, train_dataset, val_dataset, fold_idx, device):
     input_channels = sample.shape[0] # (B, C, L)
     print(f"Input channels: {input_channels}")
     
-    n_classes = len(np.unique(train_dataset.gestures if isinstance(train_dataset, GRABMyoWindowDataset) else train_dataset.datasets[0].gestures))
-    # Correct classes to 8 if not detected correctly (gestures are 10-17 mapped to 0-7)
+    # Hardcode for GRABMyo
     n_classes = 8 
     
     model = get_model(args.model, n_channels=input_channels, n_classes=n_classes, device=device)
