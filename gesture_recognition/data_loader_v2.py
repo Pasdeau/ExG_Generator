@@ -119,7 +119,17 @@ class GRABMyoWindowDataset(Dataset):
                             if self.preload and str_path not in self.trial_cache:
                                 try:
                                     record = wfdb.rdrecord(str_path)
-                                    self.trial_cache[str_path] = record.p_signal.astype(np.float32)
+                                    sig = record.p_signal.astype(np.float32)
+                                    
+                                    # Preprocess BEFORE caching to avoid repeated computation in __getitem__
+                                    if self.apply_car or self.apply_bandpass or self.apply_notch:
+                                        sig = preprocessing.preprocess_trial(
+                                            sig, 
+                                            fs=self.fs, 
+                                            apply_notch=self.apply_notch
+                                        )
+                                        
+                                    self.trial_cache[str_path] = sig
                                 except Exception as e:
                                     print(f"[WARN] Failed to read {str_path}: {e}")
                                     continue
@@ -154,15 +164,30 @@ class GRABMyoWindowDataset(Dataset):
             sig = record.p_signal  # Shape: (10240, 32)
         
         # Preprocessing pipeline
-        if self.apply_car or self.apply_bandpass or self.apply_notch:
+        # If preloaded, signal is ALREADY preprocessed in __init__
+        if not self.preload and (self.apply_car or self.apply_bandpass or self.apply_notch):
             sig = preprocessing.preprocess_trial(
                 sig, 
                 fs=self.fs, 
                 apply_notch=self.apply_notch
             )
-        else:
-            # Just select forearm channels
-            sig = sig[:, self.channels]
+        elif not self.preload:
+            # Just select forearm channels if not preprocessing and not preloaded (raw)
+            # (Note: if preloaded, we assume it's already full width or processed)
+            # Actually preprocess_trial returns full width usually unless specific channel selection logic exists there
+            # But let's stick to simple logic: preload = ready to use data.
+            pass
+            
+        if not self.apply_car and not self.apply_bandpass and not self.apply_notch:
+             # Use raw channels if no preprocessing requested
+             sig = sig[:, self.channels]
+        # Note: If preprocessed, preprocess_trial usually handles channel selection or keeps all. 
+        # But CAR/Scaling usually keeps all. The channel selection happens at the end or extracting window?
+        # Let's check window extraction: it slices [:, :]
+        # Then later: window = window.T (channels, time)
+        # We need to ensure we select correct channels if we have 32 but only want 16.
+        if sig.shape[1] > len(self.channels):
+             sig = sig[:, self.channels]
         
         # Extract window
         start = info["window_idx"] * self.hop
