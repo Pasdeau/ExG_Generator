@@ -62,7 +62,6 @@ class GRABMyoWindowDataset(Dataset):
         apply_car: bool = True,
         apply_bandpass: bool = True,
         apply_notch: bool = False,
-        apply_notch: bool = False,
         normalize: bool = True,
         transform = None,
         session_stats: Optional[Dict] = None,
