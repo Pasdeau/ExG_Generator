@@ -250,6 +250,13 @@ def main():
             acc = train_model(args, train_dataset, test_dataset, fold_idx+1, device)
             results.append(acc)
             
+            # Explicit cleanup to prevent OOM
+            del train_dataset
+            del test_dataset
+            import gc
+            gc.collect()
+            print(f"Fold {fold_idx+1} cleanup complete.")
+            
     print("\n" + "="*40)
     print(f"Results ({args.split_mode}):")
     print(f"Mean Accuracy: {np.mean(results)*100:.2f}% ± {np.std(results)*100:.2f}%")
