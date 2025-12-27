@@ -197,7 +197,7 @@ This project is licensed under the [MIT License](LICENSE).
 - Côté-Allard, U., Campbell, E., Phinyomark, A., Laviolette, F., Gosselin, B., & Scheme, E. (2022). *A Transferable Adaptive Domain Adversarial Neural Network for Virtual Reality Augmented EMG-based Gesture Recognition* (version 1.0.2). PhysioNet. https://doi.org/10.13026/n36e-0w52
 - **GRABMyo Dataset**: https://physionet.org/content/grabmyo/1.0.2/
 
-### Signal Processing \u0026 Simulation
+### Signal Processing & Simulation
 
 **ENG Simulation**:
 - Makowski, D., Pham, T., Lau, Z. J., Brammer, J. C., Lespinasse, F., Pham, H., ... & Najafi, S. (2021). NeuroKit2: A Python toolbox for neurophysiological signal processing. *Behavior Research Methods*, 53(4), 1689-1696. https://doi.org/10.3758/s13428-020-01516-y
@@ -219,7 +219,7 @@ This project is licensed under the [MIT License](LICENSE).
 - Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., ... & Polosukhin, I. (2017). Attention is all you need. *Advances in neural information processing systems*, 30.
 - Wen, Q., Zhou, T., Zhang, C., Chen, W., Ma, Z., Yan, J., & Sun, L. (2023). Transformers in time series: A survey. In *IJCAI*, 6778-6786.
 
-### Loss Functions \u0026 Training Techniques
+### Loss Functions & Training Techniques
 
 **Focal Loss**:
 - Lin, T. Y., Goyal, P., Girshick, R., He, K., & Dollár, P. (2017). Focal loss for dense object detection. In *Proceedings of the IEEE international conference on computer vision* (pp. 2980-2988).
