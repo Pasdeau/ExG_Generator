@@ -53,3 +53,17 @@ physionet.org/
 # System files
 .DS_Store
 
+
+post/
+
+# Paper and LaTeX logic
+paper/
+*.aux
+*.log
+*.out
+*.pdf
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Blog posts (local draft)

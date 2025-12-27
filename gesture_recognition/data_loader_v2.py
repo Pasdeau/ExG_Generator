@@ -17,7 +17,11 @@ from pathlib import Path
 import wfdb
 from typing import Tuple, List, Optional, Dict
 from sklearn.model_selection import KFold
-import preprocessing
+try:
+    from . import preprocessing
+except ImportError:
+    import preprocessing
+import random
 
 
 # GRABMyo channel layout (based on header inspection)
@@ -65,7 +69,9 @@ class GRABMyoWindowDataset(Dataset):
         normalize: bool = True,
         transform = None,
         session_stats: Optional[Dict] = None,
-        preload: bool = False
+        preload: bool = False,
+        causal: bool = False,
+        augment_rotation: bool = False
     ):
         self.data_root = Path(data_root)
         self.sessions = sessions
@@ -83,6 +89,8 @@ class GRABMyoWindowDataset(Dataset):
         self.transform = transform
         self.session_stats = session_stats if session_stats else {}
         self.preload = preload
+        self.causal = causal
+        self.augment_rotation = augment_rotation
         self.trial_cache = {}
         
         # Build window index
@@ -126,7 +134,8 @@ class GRABMyoWindowDataset(Dataset):
                                         sig = preprocessing.preprocess_trial(
                                             sig, 
                                             fs=self.fs, 
-                                            apply_notch=self.apply_notch
+                                            apply_notch=self.apply_notch,
+                                            causal=self.causal
                                         )
                                         
                                     self.trial_cache[str_path] = sig
@@ -164,28 +173,32 @@ class GRABMyoWindowDataset(Dataset):
             sig = record.p_signal  # Shape: (10240, 32)
         
         # Preprocessing pipeline
-        # If preloaded, signal is ALREADY preprocessed in __init__
         if not self.preload and (self.apply_car or self.apply_bandpass or self.apply_notch):
             sig = preprocessing.preprocess_trial(
                 sig, 
                 fs=self.fs, 
-                apply_notch=self.apply_notch
+                apply_notch=self.apply_notch,
+                causal=self.causal
             )
-        elif not self.preload:
-            # Just select forearm channels if not preprocessing and not preloaded (raw)
-            # (Note: if preloaded, we assume it's already full width or processed)
-            # Actually preprocess_trial returns full width usually unless specific channel selection logic exists there
-            # But let's stick to simple logic: preload = ready to use data.
-            pass
+        
+        # Spatial Augmentation (Rotation)
+        # Apply BEFORE channel selection (if we select specific rings)
+        # But we act on full signal or at least the rings
+        if self.augment_rotation:
+            # Random shift 0-7 positions
+            shift = random.randint(0, 7)
             
+            # Apply to Ring 1 (0-7)
+            # Create a copy to avoid in-place modification of cached data
+            sig_aug = sig.copy()
+            sig_aug[:, FOREARM_RING1] = np.roll(sig[:, FOREARM_RING1], shift, axis=1)
+            # Apply to Ring 2 (8-15) - assuming same rotation direction
+            sig_aug[:, FOREARM_RING2] = np.roll(sig[:, FOREARM_RING2], shift, axis=1)
+            sig = sig_aug
+
+        # Channel selection
         if not self.apply_car and not self.apply_bandpass and not self.apply_notch:
-             # Use raw channels if no preprocessing requested
              sig = sig[:, self.channels]
-        # Note: If preprocessed, preprocess_trial usually handles channel selection or keeps all. 
-        # But CAR/Scaling usually keeps all. The channel selection happens at the end or extracting window?
-        # Let's check window extraction: it slices [:, :]
-        # Then later: window = window.T (channels, time)
-        # We need to ensure we select correct channels if we have 32 but only want 16.
         if sig.shape[1] > len(self.channels):
              sig = sig[:, self.channels]
         
@@ -210,6 +223,11 @@ class GRABMyoWindowDataset(Dataset):
         velocity = velocity.T.astype(np.float32)
         sig_dual = np.concatenate([window, velocity], axis=0)  # (2*n_channels, window_len)
         
+        # NaN check safety
+        if np.isnan(sig_dual).any():
+            sig_dual = np.nan_to_num(sig_dual, nan=0.0)
+            # print(f"[WARN] NaN detected in window {idx}, replaced with zeros.")
+            
         # Label: gesture index (0-indexed for CrossEntropyLoss)
         # GRABMyo files use gesture 10-17, we map to 0-7
         label = info["gesture"] - 10

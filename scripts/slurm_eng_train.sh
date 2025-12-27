@@ -36,7 +36,7 @@ python3 -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.cud
 echo ""
 echo "Starting training..."
 cd noise_detection
-python train.py train --steps 5000 --batch_size 32 --log_interval 100 --save_interval 500
+python -u train.py train --steps 5000 --batch_size 32 --log_interval 100 --save_interval 500
 
 echo ""
 echo "=== Training Complete ==="

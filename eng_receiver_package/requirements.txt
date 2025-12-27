@@ -1,0 +1,13 @@
+
+# Core
+numpy
+torch
+
+# GUI & Plotting
+matplotlib
+PyQt6
+pyqtgraph
+
+# Serial / Hardware
+pyserial
+bleak

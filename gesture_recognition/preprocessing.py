@@ -55,7 +55,8 @@ def bandpass_filter(emg_signal: np.ndarray,
                     fs: int = 2048, 
                     lowcut: float = 20.0, 
                     highcut: float = 450.0,
-                    order: int = 4) -> np.ndarray:
+                    order: int = 4,
+                    causal: bool = False) -> np.ndarray:
     """
     Apply Butterworth bandpass filter to EMG signal.
     
@@ -65,6 +66,7 @@ def bandpass_filter(emg_signal: np.ndarray,
         lowcut: Lower cutoff frequency in Hz
         highcut: Upper cutoff frequency in Hz
         order: Filter order
+        causal: If True, use lfilter (causal); If False, use filtfilt (zero-phase).
         
     Returns:
         Filtered signal, same shape as input
@@ -79,8 +81,14 @@ def bandpass_filter(emg_signal: np.ndarray,
     # Apply filter to each channel
     filtered = np.zeros_like(emg_signal)
     for i in range(emg_signal.shape[1]):
-        # Use filtfilt for zero-phase filtering
-        filtered[:, i] = signal.filtfilt(b, a, emg_signal[:, i])
+        if causal:
+            # Causal filter (simulates real-time)
+            # Initialize with zi to match steady state if possible, but for simple training
+            # just applying lfilter is enough to introduce the phase shift model needs to learn.
+            filtered[:, i] = signal.lfilter(b, a, emg_signal[:, i])
+        else:
+            # Zero-phase filter (offline standard)
+            filtered[:, i] = signal.filtfilt(b, a, emg_signal[:, i])
     
     return filtered
 
@@ -178,7 +186,8 @@ def normalize_signal(emg_signal: np.ndarray,
 def preprocess_trial(trial_signal: np.ndarray,
                      fs: int = 2048,
                      apply_notch: bool = False,
-                     notch_freq: float = 50.0) -> np.ndarray:
+                     notch_freq: float = 50.0,
+                     causal: bool = False) -> np.ndarray:
     """
     Complete preprocessing pipeline for one trial.
     
@@ -192,6 +201,7 @@ def preprocess_trial(trial_signal: np.ndarray,
         fs: Sampling rate
         apply_notch: Whether to apply notch filter
         notch_freq: Powerline frequency (50 or 60 Hz)
+        causal: Use causal filtering (for real-time training)
         
     Returns:
         Preprocessed signal, shape (n_samples, 16)
@@ -200,10 +210,11 @@ def preprocess_trial(trial_signal: np.ndarray,
     signal_car = apply_car_to_signal(trial_signal)
     
     # Step 2: Bandpass filter
-    signal_bp = bandpass_filter(signal_car, fs=fs)
+    signal_bp = bandpass_filter(signal_car, fs=fs, causal=causal)
     
     # Step 3: Optional notch filter
     if apply_notch:
+        # TODO: update notch to support causal if needed, but notch is less critical for phase shift typically
         signal_bp = notch_filter(signal_bp, fs=fs, freq=notch_freq)
     
     return signal_bp

@@ -35,7 +35,8 @@ class GRABMyoDataset(Dataset):
         gestures: Optional[List[int]] = None,
         channels: List[int] = FOREARM_CHANNELS,
         segment_len: int = 2048,
-        normalize: bool = True
+        normalize: bool = True,
+        transform = None
     ):
         self.data_root = Path(data_root)
         self.sessions = sessions
@@ -44,6 +45,7 @@ class GRABMyoDataset(Dataset):
         self.channels = channels
         self.segment_len = segment_len
         self.normalize = normalize
+        self.transform = transform
         
         # Build file index
         self.samples = []
@@ -58,15 +60,15 @@ class GRABMyoDataset(Dataset):
                 continue
             
             for subj in self.subjects:
-                subj_dir = session_dir / f"session{session}_subject{subj}"
+                subj_dir = session_dir / f"session{session}_participant{subj}"
                 if not subj_dir.exists():
                     continue
                 
                 for gest in self.gestures:
                     # Each gesture has 7 trials
                     for trial in range(1, 8):
-                        # File naming: session{i}_subject{j}_gesture{k}_trial{t}.dat
-                        fname = f"session{session}_subject{subj}_gesture{gest}_trial{trial}"
+                        # File naming: session{i}_participant{j}_gesture{k}_trial{t}.dat
+                        fname = f"session{session}_participant{subj}_gesture{gest}_trial{trial}"
                         fpath = subj_dir / fname
                         
                         # Check if .dat exists
@@ -126,7 +128,12 @@ class GRABMyoDataset(Dataset):
         # Label: 0-indexed for CrossEntropyLoss
         label = info["gesture"] - 1 # 0-15
         
-        return torch.from_numpy(sig_dual), label
+        sig_tensor = torch.from_numpy(sig_dual)
+        
+        if self.transform:
+            sig_tensor = self.transform(sig_tensor)
+            
+        return sig_tensor, label
 
 
 if __name__ == "__main__":

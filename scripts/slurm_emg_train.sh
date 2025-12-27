@@ -31,7 +31,7 @@ echo ""
 
 # Run training
 python -u gesture_recognition/train.py \
-    --data_dir "$GRABMYO_PATH" \
+    --data_root "$GRABMYO_PATH" \
     --epochs 50 \
     --batch_size 64 \
     --lr 0.001

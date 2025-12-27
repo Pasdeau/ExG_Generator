@@ -13,7 +13,24 @@ from sklearn.metrics import confusion_matrix, classification_report
 import matplotlib.pyplot as plt
 
 from model import GestureClassifier1D
+from models.resnet import ResNet18_1D
 from data_loader import GRABMyoDataset
+import transforms
+
+class DatasetTransformer(torch.utils.data.Dataset):
+    """Wrapper to apply transforms to a Subset."""
+    def __init__(self, subset, transform=None):
+        self.subset = subset
+        self.transform = transform
+        
+    def __getitem__(self, index):
+        x, y = self.subset[index]
+        if self.transform:
+            x = self.transform(x)
+        return x, y
+        
+    def __len__(self):
+        return len(self.subset)
 
 
 def train_epoch(model, loader, optimizer, criterion, device):
@@ -101,20 +118,33 @@ def main(args):
     # Train/Val Split (80/20)
     n_val = int(len(full_dataset) * 0.2)
     n_train = len(full_dataset) - n_val
-    train_ds, val_ds = random_split(full_dataset, [n_train, n_val], generator=torch.Generator().manual_seed(42))
+    train_subset, val_subset = random_split(full_dataset, [n_train, n_val], generator=torch.Generator().manual_seed(42))
+    
+    # Data Augmentation Wrapper for Training Set
+    train_transform = transforms.Compose([
+        transforms.RandomTimeWarp(p=0.5),
+        transforms.ElectrodeShift(p=0.5),
+        transforms.GaussianNoise(p=0.5)
+    ])
+    
+    train_ds = DatasetTransformer(train_subset, transform=train_transform)
+    val_ds = val_subset # No transform for validation
     
     print(f"Train: {len(train_ds)}, Val: {len(val_ds)}")
     
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0)
     
-    # Model
-    n_channels = len(full_dataset.channels)
-    model = GestureClassifier1D(n_channels=n_channels, n_classes=16, seq_len=args.segment_len).to(device)
+    # Model: n_channels * 2 because we concatenate [signal, velocity]
+    n_channels = len(full_dataset.channels) * 2  # 16 EMG + 16 Velocity = 32
+    # model = GestureClassifier1D(n_channels=n_channels, n_classes=16, seq_len=args.segment_len).to(device)
+    # Upgrade to ResNet-1D with Attention
+    print("Using ResNet-1D with Attention...")
+    model = ResNet18_1D(n_channels=n_channels, n_classes=16).to(device)
     print(f"Model params: {sum(p.numel() for p in model.parameters()):,}")
     
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1) # Add Label Smoothing (0.1)
     
     save_dir = Path("checkpoints")
     save_dir.mkdir(exist_ok=True)

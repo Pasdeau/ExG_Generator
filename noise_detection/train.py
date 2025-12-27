@@ -9,23 +9,29 @@ import numpy as np
 
 from model import NoiseDetector1D
 from dataset import ENGSimulationDataset
+from losses import FocalLoss, DiceBCELoss
 
 def train(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
+    print(f"Using device: {device}", flush=True)
 
-    # Dataset (Infinite stream)
-    dataset = ENGSimulationDataset(fs=8000, duration_s=2.0)
+    # Dataset (Infinite stream with min noise ratio)
+    dataset = ENGSimulationDataset(fs=8000, duration_s=2.0, min_noise_ratio=0.02)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, num_workers=0) # 0 workers for simplicity with random seeds
 
     model = NoiseDetector1D().to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    criterion = nn.BCELoss() # Binary Cross Entropy (Model outputs Sigmoid)
+    
+    # Use Focal Loss for imbalanced data (most samples are clean)
+    criterion = FocalLoss(alpha=0.75, gamma=2.0)  # Higher alpha = more weight on noise class
+    
+    # Learning rate scheduler to prevent divergence
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.steps, eta_min=1e-5)
 
     save_dir = Path("checkpoints")
     save_dir.mkdir(exist_ok=True)
 
-    print("Starting training...")
+    print("Starting training...", flush=True)
     iterator = iter(dataloader)
     
     losses = []
@@ -44,28 +50,29 @@ def train(args):
         # Backward
         loss.backward()
         optimizer.step()
+        scheduler.step()  # Update learning rate
 
         losses.append(loss.item())
 
         if step % args.log_interval == 0:
             avg_loss = sum(losses[-args.log_interval:]) / args.log_interval
-            print(f"Step {step}/{args.steps} | Loss: {avg_loss:.4f}")
+            print(f"Step {step}/{args.steps} | Loss: {avg_loss:.4f}", flush=True)
             
             # Simple Accuracy Metric (Threshold 0.5)
             with torch.no_grad():
                 pred_bin = (pred > 0.5).float()
                 acc = (pred_bin == y).float().mean()
                 iou = (pred_bin * y).sum() / ((pred_bin + y).clamp(0, 1).sum() + 1e-6)
-            print(f"  Acc: {acc.item():.4f} | IoU(Noise): {iou.item():.4f}")
+            print(f"  Acc: {acc.item():.4f} | IoU(Noise): {iou.item():.4f}", flush=True)
 
         if step % args.save_interval == 0:
             torch.save(model.state_dict(), save_dir / f"model_step_{step}.pth")
             torch.save(model.state_dict(), save_dir / "latest_model.pth")
-            print(f"  Saved checkpoint to {save_dir}")
+            print(f"  Saved checkpoint to {save_dir}", flush=True)
             
     # Save Final
     torch.save(model.state_dict(), save_dir / "final_model.pth")
-    print("Training Complete.")
+    print("Training Complete.", flush=True)
 
 
 def inference_viz(args):

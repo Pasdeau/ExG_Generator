@@ -157,6 +157,8 @@ def main():
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--ckpt_dir", type=str, default="./checkpoints")
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--causal", action='store_true', help="Use causal filtering for real-time compatibility")
+    parser.add_argument("--augment_rotation", action='store_true', help="Enable spatial rotation augmentation")
     args = parser.parse_args()
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -231,7 +233,9 @@ def main():
                 apply_car=True,
                 apply_bandpass=True,
                 normalize=True, # Per-session normalization handled internally
-                preload=True
+                preload=True,
+                causal=args.causal,
+                augment_rotation=args.augment_rotation
             )
             
             test_dataset = GRABMyoWindowDataset(
@@ -244,7 +248,8 @@ def main():
                 apply_car=True,
                 apply_bandpass=True,
                 normalize=True,
-                preload=True
+                preload=True,
+                causal=args.causal
             )
             
             acc = train_model(args, train_dataset, test_dataset, fold_idx+1, device)

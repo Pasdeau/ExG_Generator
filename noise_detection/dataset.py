@@ -17,10 +17,11 @@ class ENGSimulationDataset(IterableDataset):
     """
     Infinite stream of simulated ENG signals + Noise Labels.
     """
-    def __init__(self, fs=8000, duration_s=1.0, normalize=True):
+    def __init__(self, fs=8000, duration_s=1.0, normalize=True, min_noise_ratio=0.02):
         self.fs = fs
         self.duration_s = duration_s
         self.normalize = normalize
+        self.min_noise_ratio = min_noise_ratio  # Minimum fraction of samples that should be noise
         
         # We create a config template
         self.cfg = SimConfig(fs=fs, duration_s=duration_s)
@@ -61,6 +62,12 @@ class ENGSimulationDataset(IterableDataset):
                     start_idx = max(0, start_idx)
                     end_idx = min(len(mask), end_idx)
                     mask[start_idx:end_idx] = 1.0
+            
+            # Check minimum noise ratio - regenerate if too clean
+            noise_ratio = mask.sum() / len(mask)
+            if noise_ratio < self.min_noise_ratio:
+                # Too clean, skip and regenerate with next seed
+                continue
             
             # Normalization (Z-score)
             sig = raw.astype(np.float32)
