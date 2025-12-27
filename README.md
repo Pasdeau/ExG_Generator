@@ -135,12 +135,7 @@ We provide interactive scripts for the EMG system:
 
 ## 🔌 Real-Time Integration (ADS1298)
 
-To integrate the ENG Noise Detection model with your `ads1298_serial.py` (CH8), use the following wrapper class. 
-
-> [!WARNING]
-> **Sampling Rate Mismatch**: The current model works at **8000 Hz**. Your hardware runs at **2000 Hz**. You must either:
-> 1.  Upsample your signal (interpolate x4).
-> 2.  **Recommended**: Retrain the model with `fs=2000` in `noise_detection/dataset.py`.
+To integrate the ENG Noise Detection model with your `ads1298_serial.py` (CH8), use the following wrapper class. The sampling rate must be verified each time.
 
 ```python
 import torch
