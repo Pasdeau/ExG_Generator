@@ -195,7 +195,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 **EMG Gesture Recognition**:
 - Côté-Allard, U., Campbell, E., Phinyomark, A., Laviolette, F., Gosselin, B., & Scheme, E. (2022). *A Transferable Adaptive Domain Adversarial Neural Network for Virtual Reality Augmented EMG-based Gesture Recognition* (version 1.0.2). PhysioNet. https://doi.org/10.13026/n36e-0w52
-- **GRABMyo Dataset**: https://physionet.org/content/grabmyo/1.0.2/
+- **GRABMyo Dataset**: [https://physionet.org/content/grabmyo/1.0.2/](https://physionet.org/content/grabmyo/1.1.0/)
 
 ### Signal Processing & Simulation
 
